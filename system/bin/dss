@@ -1,0 +1,293 @@
+#!/system/bin/sh
+
+display_usage() { 
+	echo "usage: dss {enable|disable} {user|system} [package] ($1)"
+} 
+
+# give a message the very first time the command is run
+# keep a dot file on /data to remember this
+if [ ! -e /data/.dss.init ]; then
+    echo "Analytics Disabler Reminder.\n"
+    echo "If you apply this script for 'system' apps, it might cause Google-Play system update to fail and reboot.\n"
+    echo "In that case, do not forget to run this script with 'enable' BEFORE applying the Google-Play system update.\n"
+    echo "You won't see this message when you run the script again.\n"
+    touch /data/.dss.init
+    exit 0
+fi
+
+if [ $# -ne 2 ] && [ $# -ne 3 ]; then 
+	display_usage "needs 2 or 3 arguments"
+	exit 1
+fi
+
+if [ "$1" != "enable" ] && [ "$1" != "disable" ]; then
+    display_usage "first argument must be 'enable' or 'disable'"
+    exit 1
+fi
+
+if [ "$2" != "user" ] && [ "$2" != "system" ]; then
+    display_usage "second argument must be 'user' or 'system'"
+    exit 1
+fi
+
+# use -e flag to filter only "enabled" packages
+# use -3 flag to filter only "3rd party" packages
+# use -s flag to filter only "system" packages
+
+if [ "$2" == "user" ]; then
+    FLAG="-3"
+else
+    FLAG="-s"
+fi
+
+PLIST=`/system/bin/cmd package list packages -e $FLAG | grep -v Swift | sort | sed 's/package://g'`
+
+if [ $# -eq 3 ]; then
+    if echo $PLIST | /system/bin/grep --quiet "$3"; then
+        PLIST=( $3 )
+    else
+        display_usage "third argument [$3]: package does not exist"
+        exit 1
+    fi
+fi
+
+CMD="$1"
+
+if [ "$1" == "enable" ]; then
+    CMD=enable
+else
+    if [ "$1" == "disable" ]; then
+        CMD=disable
+    else
+        CMD=enable
+    fi
+fi
+
+DCNT=0
+ECNT=0
+ERR=0
+
+dodis () {
+    pm "$1" "$2" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        if [ "$1" = "enable" ]; then
+            ECNT=$(( ECNT + 1 ))
+        else
+            DCNT=$(( DCNT + 1 ))
+        fi
+    else
+        ERR=$(( ERR + 1))
+    fi
+}
+
+# next applies to ALL packages which we selected
+for i in $PLIST; do
+    # next applies to ALL packages
+    dodis $CMD "$i/com.adjust.sdk.AdjustReferrerReceiver"
+    dodis $CMD "$i/com.adjust.sdk.AdjustPreinstallReferrerReceiver"
+    dodis $CMD "$i/com.alipay.sdk.app.APayEntranceActivity"
+    dodis $CMD "$i/com.alipay.sdk.app.AlipayResultActivity"
+    dodis $CMD "$i/com.alipay.sdk.app.H5AuthActivity"
+    dodis $CMD "$i/com.alipay.sdk.app.H5OpenAuthActivity"
+    dodis $CMD "$i/com.alipay.sdk.app.H5PayActivity"
+    dodis $CMD "$i/com.alipay.sdk.app.PayResultActivity"
+    dodis $CMD "$i/com.alipay.sdk.auth.AuthActivity"
+    dodis $CMD "$i/com.amap.api.location.APSService"
+    dodis $CMD "$i/com.android.billingclient.api.ProxyBillingActivity"
+    dodis $CMD "$i/com.android.billingclient.api.ProxyBillingActivityV2"
+    dodis $CMD "$i/com.appsflyer.MultipleInstallBroadcastReceiver"
+    dodis $CMD "$i/com.braintreepayments.api.internal.AnalyticsIntentService"
+    dodis $CMD "$i/com.crashlytics.android.CrashlyticsInitProvider"
+    dodis $CMD "$i/com.facebook.CampaignTrackingReceiver"
+    dodis $CMD "$i/com.facebook.ads.AudienceNetworkActivity"
+    dodis $CMD "$i/com.facebook.ads.AudienceNetworkContentProvider"
+    dodis $CMD "$i/com.facebook.ads.internal.ipc.AdsMessengerService"
+    dodis $CMD "$i/com.facebook.ads.internal.ipc.AdsProcessPriorityService"
+    dodis $CMD "$i/com.facebook.internal.FacebookInitProvider"
+    dodis $CMD "$i/com.google.analytics.tracking.android.CampaignTrackingReceiver"
+    dodis $CMD "$i/com.google.analytics.tracking.android.CampaignTrackingService"
+    dodis $CMD "$i/com.google.android.gms.ads.AdActivity"
+    dodis $CMD "$i/com.google.android.gms.ads.AdRequestBrokerService"
+    dodis $CMD "$i/com.google.android.gms.ads.AdService"
+    dodis $CMD "$i/com.google.android.gms.ads.MobileAdsInitProvider"
+    dodis $CMD "$i/com.google.android.gms.ads.cache.CacheBrokerService"
+    dodis $CMD "$i/com.google.android.gms.ads.identifier.service.AdIdProviderService"
+    dodis $CMD "$i/com.google.android.gms.ads.identifier.service.AdvertisingIdNotificationService"
+    dodis $CMD "$i/com.google.android.gms.ads.identifier.service.AdvertisingIdService"
+    dodis $CMD "$i/com.google.android.gms.ads.jams.NegotiationService"
+    dodis $CMD "$i/com.google.android.gms.ads.measurement.GmpConversionTrackingBrokerService"
+    dodis $CMD "$i/com.google.android.gms.ads.settings.AdsSettingsActivity"
+    dodis $CMD "$i/com.google.android.gms.ads.social.GcmSchedulerWakeupService"
+    dodis $CMD "$i/com.google.android.gms.adsidentity.settings.AdsIdentityPersonalizationActivity"
+    dodis $CMD "$i/com.google.android.gms.adsidentity.settings.AdsIdentitySettingsActivity"
+    dodis $CMD "$i/com.google.android.gms.analytics.AnalyticsJobService"
+    dodis $CMD "$i/com.google.android.gms.analytics.AnalyticsReceiver"
+    dodis $CMD "$i/com.google.android.gms.analytics.AnalyticsService"
+    dodis $CMD "$i/com.google.android.gms.analytics.AnalyticsTaskService"
+    dodis $CMD "$i/com.google.android.gms.analytics.CampaignTrackingReceiver"
+    dodis $CMD "$i/com.google.android.gms.analytics.CampaignTrackingService"
+    dodis $CMD "$i/com.google.android.gms.analytics.internal.PlayLogReportingService"
+    dodis $CMD "$i/com.google.android.gms.analytics.service.AnalyticsService"
+    dodis $CMD "$i/com.google.android.gms.measurement.AppMeasurementContentProvider"
+    dodis $CMD "$i/com.google.android.gms.measurement.AppMeasurementInstallReferrerReceiver"
+    dodis $CMD "$i/com.google.android.gms.measurement.AppMeasurementJobService"
+    dodis $CMD "$i/com.google.android.gms.measurement.AppMeasurementReceiver"
+    dodis $CMD "$i/com.google.android.gms.measurement.AppMeasurementService"
+    dodis $CMD "$i/com.google.android.gms.measurement.PackageMeasurementService"
+    dodis $CMD "$i/com.google.android.gms.measurement.PackageMeasurementTaskService"
+    dodis $CMD "$i/com.google.android.gms.measurement.GmpConversionTrackingBrokerService"
+    dodis $CMD "$i/com.google.android.gms.measurement.PackageMeasurementReceiver"
+    dodis $CMD "$i/com.google.android.gms.tagmanager.TagManagerPreviewActivity"
+    dodis $CMD "$i/com.google.android.gms.tagmanager.InstallReferrerReceiver"
+    dodis $CMD "$i/com.google.android.gms.tagmanager.InstallReferrerService"
+    dodis $CMD "$i/com.google.firebase.auth.api.gms.service.FirebaseAuthService"
+    dodis $CMD "$i/com.google.firebase.iid.FirebaseInstanceIdService"
+    dodis $CMD "$i/com.google.firebase.messaging.FirebaseMessagingListenerService"
+    dodis $CMD "$i/com.google.firebase.messaging.FirebaseMessagingService"
+    dodis $CMD "$i/com.google.firebase.perf.provider.FirebasePerfProvider"
+    dodis $CMD "$i/com.google.firebase.provider.FirebasePerfProvider"
+    dodis $CMD "$i/com.google.tagmanager.PreviewActivity"
+    dodis $CMD "$i/com.pairip.licensecheck.LicenseActivity"
+    dodis $CMD "$i/com.pairip.licensecheck.LicenseContentProvider"
+    dodis $CMD "$i/com.sina.weibo.sdk.component.WeiboSdkBrowser"
+    dodis $CMD "$i/com.sina.weibo.sdk.content.FileProvider"
+    dodis $CMD "$i/com.sina.weibo.sdk.share.ShareTransActivity"
+    dodis $CMD "$i/com.sina.weibo.sdk.web.WebActivity"
+    dodis $CMD "$i/com.tencent.connect.common.AssistActivity"
+    dodis $CMD "$i/io.sentry.android.core.SentryInitProvider"
+    dodis $CMD "$i/io.sentry.android.core.SentryPerformanceProvider"
+    dodis $CMD "$i/org.acra.dialog.CrashReportDialog"
+    dodis $CMD "$i/org.acra.sender.JobSenderService"
+    dodis $CMD "$i/org.acra.sender.LegacySenderService"
+    dodis $CMD "$i/org.acra.attachment.AcraContentProvider"
+    
+    if [ "$i" == "com.google.android.gms" ]; then
+        dodis $CMD "com.google.android.gms/.ads.AdRequestBrokerService"
+        dodis $CMD "com.google.android.gms/.analytics.AnalyticsService"
+        dodis $CMD "com.google.android.gms/.analytics.AnalyticsTaskService"
+        dodis $CMD "com.google.android.gms/.analytics.internal.PlayLogReportingService"
+        dodis $CMD "com.google.android.gms/.analytics.service.AnalyticsService"
+        dodis $CMD "com.google.android.gms/.measurement.AppMeasurementJobService"
+        dodis $CMD "com.google.android.gms/.measurement.AppMeasurementService"
+        dodis $CMD "com.google.android.gms/.measurement.PackageMeasurementService"
+        dodis $CMD "com.google.android.gms/.measurement.PackageMeasurementTaskService"
+        dodis $CMD "com.google.android.gms/.measurement.service.MeasurementBrokerService"
+        dodis $CMD "com.google.android.gms/.analytics.AnalyticsReceiver"
+        dodis $CMD "com.google.android.gms/.measurement.AppMeasurementReceiver"
+        dodis $CMD "com.google.android.gms/.measurement.PackageMeasurementReceiver"
+        dodis $CMD "com.google.android.gms/com.google.android.gms.auth.account.authenticator.WorkAccountAuthenticatorInitializerReceiver"
+        dodis $CMD "com.google.android.gms/com.google.android.gms.auth.account.authenticator.WorkAccountAuthenticatorService"
+        dodis $CMD "com.google.android.gms/com.google.android.gms.auth.account.data.WorkAccountStoreReceiver"
+        dodis $CMD "com.google.android.gms/com.google.android.gms.auth.managed.ui.SetupWorkProfileActivity"
+        dodis $CMD "com.google.android.gms/com.google.android.gms.auth.uiflows.addaccount.CantAddWorkAccountActivity"
+        dodis $CMD "com.google.android.gms/com.google.android.gms.backup.component.MmsBackupSchedulerService"
+        dodis $CMD "com.google.android.gms/com.google.android.gms.backup.mms.MmsBackupService"
+        dodis $CMD "com.google.android.gms/com.google.android.gms.backup.mms.MmsRestoreService"
+        dodis $CMD "com.google.android.gms/com.google.android.location.ealert.ux.EAlertSafetyInfoActivity"
+        dodis $CMD "com.google.android.gms/com.google.android.gms.location.settings.ArwEAlertPlatformSettingsActivity"
+        dodis $CMD "com.google.android.gms/com.google.android.location.settings.ArwEAlertSettingsActivity"
+        dodis $CMD "com.google.android.gms/com.google.android.location.settings.ArwEAlertSettingsV31Activity"
+        dodis $CMD "com.google.android.gms/com.google.android.location.settings.EAlertGoogleSettingDebugActivity"
+        dodis $CMD "com.google.android.gms/com.google.android.gms.location.settings.EAlertPlatformSettingsActivity"
+        dodis $CMD "com.google.android.gms/com.google.android.location.settings.EAlertSettingsActivity"
+        dodis $CMD "com.google.android.gms/com.google.android.location.settings.EAlertSettingsV31Activity"
+    fi
+    if [ "$i" == "com.google.android.apps.messaging" ]; then
+        # disable MMS and RCS
+        dodis $CMD "com.google.android.apps.messaging/android.support.v7.mms.MmsService"
+        dodis $CMD "com.google.android.apps.messaging/com.google.android.apps.messaging.rcsmigration.RcsMigrationService"
+        dodis $CMD "com.google.android.apps.messaging/com.google.android.apps.messaging.rcsprovisioning.RcsProvisioningBroadcastReceiver"
+        dodis $CMD "com.google.android.apps.messaging/com.google.android.apps.messaging.shared.rcs.messaging.MessagingEngineNotificationServer"
+        dodis $CMD "com.google.android.apps.messaging/com.google.android.apps.messaging.shared.receiver.IncomingRcsEventReceiver"
+        dodis $CMD "com.google.android.apps.messaging/com.google.android.apps.messaging.shared.receiver.RcsProvisioningEventReceiver"
+        dodis $CMD "com.google.android.apps.messaging/com.google.android.apps.messaging.ui.appsettings.RcsSettingsActivity"
+        dodis $CMD "com.google.android.apps.messaging/com.google.android.apps.messaging.ui.rcs.setup.auto.RcsPromoActivity"
+        dodis $CMD "com.google.android.apps.messaging/com.google.android.apps.messaging.ui.rcs.setup.manual.RcsSetupActivity"
+    fi
+    if [ "$i" == "com.teslacoilsw.launcher" ]; then
+        dodis $CMD "com.teslacoilsw.launcher/com.teslacoilsw.launcher.NovaAccessibilityService"
+        dodis $CMD "com.teslacoilsw.launcher/com.android.launcher3.MemoryDumpActivity"
+        dodis $CMD "com.teslacoilsw.launcher/org.matomo.sdk.extra.InstallReferrerReceiver"
+    fi
+    if [ "$i" == "com.telkomsel.telkomselcm" ]; then
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.InsiderActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.InsiderInappActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.InsiderLoginActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.google.android.gms.ads.OutOfContextTestingActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.google.android.tv.ads.controls.FallbackImageActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.telkomsel.mytelkomsel.dashboard.ads.detailads.view.DetailAdsTemplateOneActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.telkomsel.mytelkomsel.dashboard.ads.detailads.view.DetailAdsTemplateTwoActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.telkomsel.mytelkomsel.dashboard.ads.detailads.view.DetailAdsVideoActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.telkomsel.mytelkomsel.view.dailycheckinrevampnew.ads.all.DciAdsAllActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.telkomsel.mytelkomsel.view.dailycheckinrevampnew.ads.DciVastAdsVideoPlayerActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.telkomsel.mytelkomsel.view.dailycheckinrevampnew.ads.video.DciVideoAdsActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.telkomsel.mytelkomsel.view.flexibleshowtime.VasPromoDigiAdsActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.telkomsel.mytelkomsel.view.shop.myads.MyAdsActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.telkomsel.mytelkomsel.view.shop.packages.myads.PackageDetailsMyAdsActivity"
+        dodis $CMD "com.telkomsel.telkomselcm/com.huawei.agconnect.core.ServiceDiscovery"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.GifPlayService"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.InsiderAmplificationService"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.InsiderFirebaseMessagingService"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.IntegrationWizard"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.SessionPayloadService"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.DeleteGifReceiver"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.DeleteInteractiveReceiver"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.GifPlayReceiver"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.InsiderGeofenceReceiver"
+        dodis $CMD "com.telkomsel.telkomselcm/com.useinsider.insider.InteractiveDirectionReceiver"
+        dodis $CMD "com.telkomsel.telkomselcm/com.huawei.agconnect.core.provider.AGConnectInitializeProvider"
+    fi
+    if [ "$i" == "com.laurencedawson.reddit_sync.pro" ]; then
+        dodis $CMD "com.laurencedawson.reddit_sync.pro/com.amazon.device.ads.AdActivity"
+        dodis $CMD "com.laurencedawson.reddit_sync.pro/com.amazon.device.ads.DTBAdActivity"
+        dodis $CMD "com.laurencedawson.reddit_sync.pro/com.amazon.device.ads.DTBInterstitialActivity"
+    fi
+    if [ "$i" == "com.mobisystems.editor.office_registered" ]; then
+        dodis $CMD "com.mobisystems.editor.office_registered/admost.adserver.core.AdMostInterstitialAdActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/admost.adserver.core.AdMostVideoEndCardActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/admost.sdk.base.AdMostCloseOverviewActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/admost.sdk.base.AdMostDebugActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/admost.sdk.base.AdMostTestSuiteActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/admost.sdk.housead.NativeInterstitialAd"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.facebook.ads.internal.ipc.RemoteANActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/net.nend.android.internal.ui.activities.formats.FullscreenVideoPlayingActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/net.nend.android.internal.ui.activities.fullboard.NendAdFullBoardActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/net.nend.android.internal.ui.activities.interstitial.NendAdInterstitialActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/net.nend.android.internal.ui.activities.video.NendAdInterstitialVideoActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/net.nend.android.internal.ui.activities.video.NendAdRewardedVideoActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.mobisystems.office.GoPremium.BuyFonts"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.mobisystems.office.GoPremium.GoPremium"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.mobisystems.office.GoPremium.GoPremiumActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.mobisystems.office.GoPremium.GoPremiumEula"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.mobisystems.office.GoPremium.GoPremiumTransparentActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.mobisystems.office.GoPremium.GoPremiumWebActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.mobisystems.office.GoPremium.PremiumAddonsActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.mobisystems.office.GoPremium.SamsungCheckPurchasedActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.mobisystems.office.InstallOtherProductActivity"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.mobisystems.office.InstallOtherProductActivityFallback"
+        dodis $CMD "com.mobisystems.editor.office_registered/com.mobisystems.office.OfferOtherProductActivity"
+        # re-enable, otherwise officesuite will crash
+        # pm enable "com.mobisystems.editor.office_registered/com.facebook.internal.FacebookInitProvider" > /dev/null
+    fi
+    if [ "$i" == "com.mxtech.videoplayer.pro" ]; then
+        dodis $CMD "com.mxtech.videoplayer.pro/com.facebook.CustomTabMainActivity"
+        dodis $CMD "com.mxtech.videoplayer.pro/com.facebook.FacebookActivity"
+        dodis $CMD "com.mxtech.videoplayer.pro/com.mxtech.videoplayer.whatsapp.WhatsAppActivity"
+        dodis $CMD "com.mxtech.videoplayer.pro/com.til.colombia.dmp.android.PersonaListener"
+    fi
+    if [ "$i" == "io.github.forkmaintainers.iceraven" ]; then
+        dodis $CMD "io.github.forkmaintainers.iceraven/mozilla.telemetry.glean.debug.GleanDebugActivity"
+        dodis $CMD "io.github.forkmaintainers.iceraven/mozilla.components.lib.crash.service.SendCrashReportService"
+        dodis $CMD "io.github.forkmaintainers.iceraven/mozilla.components.lib.crash.service.SendCrashTelemetryService"
+    fi
+    if [ "$i" == "dk.tacit.android.foldersync.full" ]; then
+        dodis $CMD "dk.tacit.android.foldersync.full/io.sentry.kotlin.multiplatform.SentryContextProvider"
+    fi
+    if [ "$i" == "com.valvesoftware.android.steam.community" ]; then
+        dodis $CMD "com.valvesoftware.android.steam.community/com.google.mlkit.vision.codescanner.internal.GmsBarcodeScanningDelegateActivity"
+        dodis $CMD "com.valvesoftware.android.steam.community/com.google.mlkit.common.internal.MlKitComponentDiscoveryService"
+        dodis $CMD "com.valvesoftware.android.steam.community/com.google.mlkit.common.internal.MlKitInitProvider"
+    fi
+done
+
+echo "*** $DCNT disabled, $ECNT enabled, $ERR skipped (services not present)"
