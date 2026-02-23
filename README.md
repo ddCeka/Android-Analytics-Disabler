@@ -54,7 +54,7 @@ Examples:
 3) disable analytics/firebase/etc for MyTelkomsel
 > dss disable user com.telkomsel.telkomselcm
 
-The script will show you output of the services which get disabled, for example for the Feedly case:
+The script will show you output of the services which get disabled, for example for the MyTelkomsel app case:
 
 > Component {com.telkomsel.telkomselcm/com.facebook.internal.FacebookInitProvider} new state: disabled
 > Component {com.telkomsel.telkomselcm/com.google.android.gms.analytics.AnalyticsJobService} new state: disabled
@@ -65,7 +65,7 @@ Occasionally it can happen that after disabling Analytics/Firebase/etc, the app 
 Then just "enable" again. Apps should - in principle - be resilient but some are not coded properly. 
 Alternatively, you can try to figure out exactly which of the services causes the crash and (manuall) 
 re-enable that service (but you will need to look into the source code a bit). 
-When you run this on Feedly for example, you will find that it crashes afterwards 
+When you run this on MyTelkomsel for example, you will find that it crashes afterwards 
 (reason is that the script disabled com.telkomsel.telkomselcm/com.facebook.internal.FacebookInitProvider). 
 You can re-enable that service individually using:
 
