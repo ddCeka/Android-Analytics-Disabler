@@ -110,6 +110,7 @@ for i in $PLIST; do
     dodis $CMD "$i/com.google.android.gms.ads.AdRequestBrokerService"
     dodis $CMD "$i/com.google.android.gms.ads.AdService"
     dodis $CMD "$i/com.google.android.gms.ads.MobileAdsInitProvider"
+    dodis $CMD "$i/com.google.android.gms.ads.NotificationHandlerActivity"
     dodis $CMD "$i/com.google.android.gms.ads.cache.CacheBrokerService"
     dodis $CMD "$i/com.google.android.gms.ads.identifier.service.AdIdProviderService"
     dodis $CMD "$i/com.google.android.gms.ads.identifier.service.AdvertisingIdNotificationService"
