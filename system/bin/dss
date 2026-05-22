@@ -206,6 +206,12 @@ for i in $PLIST; do
         dodis $CMD "com.google.android.apps.messaging/com.google.android.apps.messaging.ui.rcs.setup.auto.RcsPromoActivity"
         dodis $CMD "com.google.android.apps.messaging/com.google.android.apps.messaging.ui.rcs.setup.manual.RcsSetupActivity"
     fi
+    if [ "$i" == "com.whatsapp" ]; then
+        # this shit have too many stuff inside so wip
+        dodis $CMD "com.whatsapp/com.google.mlkit.vision.documentscanner.internal.GmsDocumentScanningDelegateActivity"
+        dodis $CMD "com.whatsapp/com.google.mlkit.common.internal.MlKitComponentDiscoveryService"
+        dodis $CMD "com.whatsapp/com.google.mlkit.common.internal.MlKitInitProvider"
+    fi
     if [ "$i" == "com.teslacoilsw.launcher" ]; then
         dodis $CMD "com.teslacoilsw.launcher/com.teslacoilsw.launcher.NovaAccessibilityService"
         dodis $CMD "com.teslacoilsw.launcher/com.android.launcher3.MemoryDumpActivity"
