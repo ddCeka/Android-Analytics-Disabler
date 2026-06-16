@@ -207,10 +207,28 @@ for i in $PLIST; do
         dodis $CMD "com.google.android.apps.messaging/com.google.android.apps.messaging.ui.rcs.setup.manual.RcsSetupActivity"
     fi
     if [ "$i" == "com.whatsapp" ]; then
-        # this shit have too many stuff inside so wip
+        # TODO: this shit have too many stuff inside, only tested for 1 month. need more time i guess just to be sure
+        dodis $CMD "com.whatsapp/.dogfood.DogfooderDiagnosticsActivity"
+        dodis $CMD "com.whatsapp/.dogfood.DogfooderDiagnosticsDetailReportActivity"
+        dodis $CMD "com.whatsapp/.metaai.incognito.internal.IncognitoPersonalizationActivity"
+        dodis $CMD "com.whatsapp/.metaai.tasks.AiEditOrDeleteTaskActivity"
+        dodis $CMD "com.whatsapp/.metaai.tasks.TasksActivity"
+        dodis $CMD "com.whatsapp/.metaai.threads.MetaAiThreadsActivity"
+        dodis $CMD "com.whatsapp/.metaai.ui.imagine.AiImagineBottomSheetLauncher"
+        dodis $CMD "com.whatsapp/.metaai.ui.imagineme.ImagineMeOnboardingActivity"
+        dodis $CMD "com.whatsapp/.metaai.ui.imagineme.settings.ImagineMeSettingsActivity"
+        dodis $CMD "com.whatsapp/.metaai.ui.widget.MetaAiAppWidgetProvider"
+        dodis $CMD "com.whatsapp/.metaai.voice.app.permission.RequestMetaAiVoicePermissionActivity"
+        dodis $CMD "com.whatsapp/.metaai.voice.product.MetaAiVoiceCallDesignActivity"
+        dodis $CMD "com.whatsapp/.metaai.voice.product.MetaAiVoiceSettingActivity"
+        dodis $CMD "com.whatsapp/.infra.crash.upload.ExceptionsUploadService"
+        dodis $CMD "com.whatsapp/com.google.android.gms.metadata.ModuleDependencies"
         dodis $CMD "com.whatsapp/com.google.mlkit.vision.documentscanner.internal.GmsDocumentScanningDelegateActivity"
         dodis $CMD "com.whatsapp/com.google.mlkit.common.internal.MlKitComponentDiscoveryService"
         dodis $CMD "com.whatsapp/com.google.mlkit.common.internal.MlKitInitProvider"
+        dodis $CMD "com.whatsapp/com.facebook.errorreporting.lacrima.detector.broadcast.ProtectedLockScreenBroadcastReceiver"
+        dodis $CMD "com.whatsapp/com.facebook.errorreporting.lacrima.detector.broadcast.PublicLockScreenBroadcastReceiver"
+        dodis $CMD "com.whatsapp/com.facebook.errorreporting.lacrima.detector.broadcast.SecureShutdownBootBroadcastReceiver"
     fi
     if [ "$i" == "com.teslacoilsw.launcher" ]; then
         dodis $CMD "com.teslacoilsw.launcher/com.teslacoilsw.launcher.NovaAccessibilityService"

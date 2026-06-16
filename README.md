@@ -4,6 +4,7 @@ Magisk module to disable app Analytics/Measurement/Firebase
 - app analytics
 - app firebase tracking
 - app crashlytics
+- app error reporting(only select few)
 
 In short, each APK (system app or user app) may have background services to do all sorts of tracking and ad handling. 
 Module allows you to disable (or enable) those services.
