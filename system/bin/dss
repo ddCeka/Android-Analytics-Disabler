@@ -1,51 +1,54 @@
 #!/system/bin/sh
 
-# Auto-detect ANSI color support (enabled only for interactive TTYs)
+# Auto-detect ANSI color support (interactive TTY only)
 if [ -t 1 ] && [ "$TERM" != "dumb" ]; then
-    CYN=$(printf '\033[1;36m')
-    GRN=$(printf '\033[1;32m')
     RED=$(printf '\033[1;31m')
+    GRN=$(printf '\033[1;32m')
     YLW=$(printf '\033[1;33m')
+    CYN=$(printf '\033[1;36m')
     DIM=$(printf '\033[2m')
     RST=$(printf '\033[0m')
 else
-    CYN=""
-    GRN=""
     RED=""
+    GRN=""
     YLW=""
+    CYN=""
     DIM=""
     RST=""
 fi
 
-# Helper functions for 60-column formatted output
+# Helper functions for strict 60-column formatted output
 print_line() {
-    printf "${DIM}+----------------------------------------------------------+${RST}\n"
+    printf "%s+----------------------------------------------------------+%s\n" "$DIM" "$RST"
 }
 
 print_row() {
-    # $1 = text, $2 = optional color code
-    CLR="$2"
-    printf "${DIM}|${RST} ${CLR}%-56.56s${RST} ${DIM}|${RST}\n" "$1"
+    # Truncates or pads plain text to 56 chars, keeping ANSI codes outside width math
+    color="$2"
+    printf "%s|%s %s%-56.56s%s %s|%s\n" "$DIM" "$RST" "$color" "$1" "$RST" "$DIM" "$RST"
 }
 
 print_wrap() {
-    # Wraps long messages cleanly at word boundaries (56 chars)
-    TXT="$1"
-    CLR="$2"
-    echo "$TXT" | fold -s -w 56 | while IFS= read -r line; do
-        print_row "$line" "$CLR"
+    text="$1"
+    color="$2"
+    echo "$text" | fold -s -w 56 | while IFS= read -r line; do
+        print_row "$line" "$color"
     done
 }
 
 print_header() {
     print_line
-    printf "${DIM}|${RST} ${CYN}%-56.56s${RST} ${DIM}|${RST}\n" "$1"
+    print_row "$1" "$CYN"
     print_line
 }
 
 display_usage() {
     print_header "DSS - Analytics & Ads Disabler"
-    print_row "Usage: dss {enable|disable} {user|system} [package]" ""
+    print_row "Usage: dss [-n|--dry-run] {enable|disable}" ""
+    print_row "           {user|system} [package]" ""
+    print_row "" ""
+    print_row "Options:" "$CYN"
+    print_row "  -n, --dry-run  Preview matches without changes" ""
     if [ -n "$1" ]; then
         print_line
         print_wrap "Error: $1" "$RED"
@@ -58,32 +61,36 @@ if [ ! -e /data/.dss.init ]; then
     print_header "Analytics Disabler Reminder"
     print_wrap "Applying this script to 'system' apps may cause Google Play system updates to fail and reboot." "$YLW"
     print_row "" ""
-    print_wrap "Remember to run this script with 'enable' BEFORE applying a Google Play system update." "$YLW"
+    print_wrap "Remember to run this script with 'enable' BEFORE applying a Google Play system update." ""
     print_row "" ""
-    print_wrap "You won't see this message when you run the script again." ""
+    print_wrap "You won't see this message when you run the script again." "$DIM"
     print_line
     touch /data/.dss.init
     exit 0
 fi
 
-# Validate arguments
+# Parse optional dry-run flag
+DRY_RUN=0
+if [ "$1" = "-n" ] || [ "$1" = "--dry-run" ]; then
+    DRY_RUN=1
+    shift
+fi
+
+# Validate positional arguments
 if [ $# -ne 2 ] && [ $# -ne 3 ]; then
     display_usage "Requires 2 or 3 arguments."
     exit 1
 fi
 
 if [ "$1" != "enable" ] && [ "$1" != "disable" ]; then
-    display_usage "1st argument must be 'enable' or 'disable'."
+    display_usage "Action must be 'enable' or 'disable'."
     exit 1
 fi
 
 if [ "$2" != "user" ] && [ "$2" != "system" ]; then
-    display_usage "2nd argument must be 'user' or 'system'."
+    display_usage "Scope must be 'user' or 'system'."
     exit 1
 fi
-
-# Record start timestamp (POSIX epoch seconds, works on Toybox/BusyBox/mksh)
-START_TIME=$(date +%s 2>/dev/null)
 
 if [ "$2" = "user" ]; then
     FLAG="-3"
@@ -102,41 +109,62 @@ if [ $# -eq 3 ]; then
     fi
 fi
 
+START_TIME=$(date +%s)
 CMD="$1"
-if [ "$CMD" = "enable" ]; then
-    ACT_CLR="$GRN"
-else
-    ACT_CLR="$RED"
-fi
-
 DCNT=0
 ECNT=0
 ERR=0
 PKG_TOTAL=$(echo "$PLIST" | wc -l | tr -d ' ')
 PKG_CURR=0
 
+if [ "$DRY_RUN" -eq 1 ]; then
+    ACTION_COLOR="$YLW"
+    ACTION_LABEL="$CMD (DRY RUN - no changes)"
+elif [ "$CMD" = "disable" ]; then
+    ACTION_COLOR="$RED"
+    ACTION_LABEL="$CMD"
+else
+    ACTION_COLOR="$GRN"
+    ACTION_LABEL="$CMD"
+fi
+
 dodis() {
-    pm "$1" "$2" >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        if [ "$1" = "enable" ]; then
-            ECNT=$(( ECNT + 1 ))
+    if [ "$DRY_RUN" -eq 1 ]; then
+        # Check if component exists in package manifest without changing state
+        if /system/bin/cmd package resolve-activity --brief "$2" >/dev/null 2>&1 || \
+           dumpsys package "${2%%/*}" 2>/dev/null | grep -Fq "${2#*/}"; then
+            if [ "$1" = "enable" ]; then
+                ECNT=$(( ECNT + 1 ))
+            else
+                DCNT=$(( DCNT + 1 ))
+            fi
         else
-            DCNT=$(( DCNT + 1 ))
+            ERR=$(( ERR + 1 ))
         fi
     else
-        ERR=$(( ERR + 1 ))
+        pm "$1" "$2" >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            if [ "$1" = "enable" ]; then
+                ECNT=$(( ECNT + 1 ))
+            else
+                DCNT=$(( DCNT + 1 ))
+            fi
+        else
+            ERR=$(( ERR + 1 ))
+        fi
     fi
 }
 
 print_header "DSS Execution Started"
-print_row "Action : $CMD" "$ACT_CLR"
+print_row "Action : $ACTION_LABEL" "$ACTION_COLOR"
 print_row "Scope  : $2 ($PKG_TOTAL package(s))" ""
 print_line
 
 for i in $PLIST; do
     PKG_CURR=$(( PKG_CURR + 1 ))
     # Live updating status line (stays within 60 columns)
-    printf "\r${DIM}|${RST} ${CYN}[%3d/%-3d]${RST} %-46.46s ${DIM}|${RST}" "$PKG_CURR" "$PKG_TOTAL" "$i"
+    printf "\r%s|%s %s[%3d/%-3d]%s %-46.46s %s|%s" \
+        "$DIM" "$RST" "$CYN" "$PKG_CURR" "$PKG_TOTAL" "$RST" "$i" "$DIM" "$RST"
 
     # Global components applied to all selected packages
     dodis "$CMD" "$i/com.adjust.sdk.AdjustReferrerReceiver"
@@ -325,7 +353,7 @@ for i in $PLIST; do
             dodis "$CMD" "com.mobisystems.editor.office_registered/com.mobisystems.office.InstallOtherProductActivityFallback"
             dodis "$CMD" "com.mobisystems.editor.office_registered/com.mobisystems.office.OfferOtherProductActivity"
             # Keep FacebookInitProvider enabled so OfficeSuite does not crash
-            if [ "$CMD" = "disable" ]; then
+            if [ "$CMD" = "disable" ] && [ "$DRY_RUN" -eq 0 ]; then
                 pm enable "com.mobisystems.editor.office_registered/com.facebook.internal.FacebookInitProvider" >/dev/null 2>&1
             fi
             ;;
@@ -351,23 +379,37 @@ for i in $PLIST; do
     esac
 done
 
-# Calculate elapsed time cleanly using POSIX arithmetic
-END_TIME=$(date +%s 2>/dev/null)
-if [ -n "$START_TIME" ] && [ -n "$END_TIME" ]; then
-    ELAPSED=$(( END_TIME - START_TIME ))
-    MINS=$(( ELAPSED / 60 ))
-    SECS=$(( ELAPSED % 60 ))
-    if [ "$MINS" -gt 0 ]; then
-        TIME_STR="${MINS}m ${SECS}s"
-    else
-        TIME_STR="${SECS}s"
-    fi
+# Compute elapsed time
+END_TIME=$(date +%s)
+ELAPSED=$(( END_TIME - START_TIME ))
+MINS=$(( ELAPSED / 60 ))
+SECS=$(( ELAPSED % 60 ))
+
+if [ "$MINS" -gt 0 ]; then
+    TIME_STR="${MINS}m ${SECS}s"
 else
-    TIME_STR="N/A"
+    TIME_STR="${SECS}s"
 fi
 
-# Clear the progress line and print the final summary box (60 columns)
-printf "\r${DIM}|${RST} ${GRN}%-56.56s${RST} ${DIM}|${RST}\n" "Completed $PKG_TOTAL package(s) in $TIME_STR."
+# Clear the progress line and print the final summary box
+if [ "$DRY_RUN" -eq 1 ]; then
+    DONE_MSG="Dry-run scanned $PKG_TOTAL package(s) in $TIME_STR."
+    DONE_CLR="$YLW"
+    LBL_DIS="Would Dis: $DCNT"
+    LBL_ENA="Would Ena: $ECNT"
+else
+    DONE_MSG="Completed $PKG_TOTAL package(s) in $TIME_STR."
+    DONE_CLR="$GRN"
+    LBL_DIS="Disabled: $DCNT"
+    LBL_ENA="Enabled: $ECNT"
+fi
+
+printf "\r%s|%s %s%-56.56s%s %s|%s\n" \
+    "$DIM" "$RST" "$DONE_CLR" "$DONE_MSG" "$RST" "$DIM" "$RST"
 print_line
-printf "${DIM}|${RST} ${RED}%-18.18s${RST} ${DIM}|${RST} ${GRN}%-16.16s${RST} ${DIM}|${RST} ${YLW}%-16.16s${RST} ${DIM}|${RST}\n" "Disabled: $DCNT" "Enabled: $ECNT" "Skipped: $ERR"
+printf "%s|%s %s%-18.18s%s %s|%s %s%-16.16s%s %s|%s %s%-16.16s%s %s|%s\n" \
+    "$DIM" "$RST" "$RED" "$LBL_DIS" "$RST" \
+    "$DIM" "$RST" "$GRN" "$LBL_ENA" "$RST" \
+    "$DIM" "$RST" "$YLW" "Skipped: $ERR" "$RST" \
+    "$DIM" "$RST"
 print_line
