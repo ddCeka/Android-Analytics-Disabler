@@ -56,6 +56,12 @@ display_usage() {
     print_line
 }
 
+# Require root privileges
+if [ "$(id -u)" -ne 0 ]; then
+    display_usage "Root access required. Run 'su' first."
+    exit 1
+fi
+
 # First-time initialization notice
 if [ ! -e /data/.dss.init ]; then
     print_header "Analytics Disabler Reminder"
@@ -130,9 +136,9 @@ fi
 
 dodis() {
     if [ "$DRY_RUN" -eq 1 ]; then
-        # Check if component exists in package manifest without changing state
-        if /system/bin/cmd package resolve-activity --brief "$2" >/dev/null 2>&1 || \
-           dumpsys package "${2%%/*}" 2>/dev/null | grep -Fq "${2#*/}"; then
+        # Check cached package dump first, fallback to resolve-activity
+        if printf '%s\n' "$PKG_DUMP" | grep -Fq "${2#*/}" || \
+           /system/bin/cmd package resolve-activity --brief "$2" >/dev/null 2>&1; then
             if [ "$1" = "enable" ]; then
                 ECNT=$(( ECNT + 1 ))
             else
@@ -165,6 +171,11 @@ for i in $PLIST; do
     # Live updating status line (stays within 60 columns)
     printf "\r%s|%s %s[%3d/%-3d]%s %-46.46s %s|%s" \
         "$DIM" "$RST" "$CYN" "$PKG_CURR" "$PKG_TOTAL" "$RST" "$i" "$DIM" "$RST"
+
+    # Cache dumpsys output once per package during dry-run
+    if [ "$DRY_RUN" -eq 1 ]; then
+        PKG_DUMP=$(dumpsys package "$i" 2>/dev/null)
+    fi
 
     # Global components applied to all selected packages
     dodis "$CMD" "$i/com.adjust.sdk.AdjustReferrerReceiver"
