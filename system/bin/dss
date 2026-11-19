@@ -23,7 +23,6 @@ print_line() {
 }
 
 print_row() {
-    # Truncates or pads plain text to 56 chars, keeping ANSI codes outside width math
     color="$2"
     printf "%s|%s %s%-56.56s%s %s|%s\n" "$DIM" "$RST" "$color" "$1" "$RST" "$DIM" "$RST"
 }
@@ -31,7 +30,7 @@ print_row() {
 print_wrap() {
     text="$1"
     color="$2"
-    echo "$text" | fold -s -w 56 | while IFS= read -r line; do
+    printf '%s\n' "$text" | fold -s -w 56 | while IFS= read -r line; do
         print_row "$line" "$color"
     done
 }
@@ -107,7 +106,7 @@ fi
 PLIST=$(/system/bin/cmd package list packages -e "$FLAG" | grep -v Swift | sort | sed 's/package://g')
 
 if [ $# -eq 3 ]; then
-    if echo "$PLIST" | /system/bin/grep -Fxq "$3"; then
+    if printf '%s\n' "$PLIST" | /system/bin/grep -Fxq "$3"; then
         PLIST="$3"
     else
         display_usage "Package '$3' not found or disabled."
@@ -115,12 +114,17 @@ if [ $# -eq 3 ]; then
     fi
 fi
 
+if [ -z "$PLIST" ]; then
+    display_usage "No matching enabled packages found."
+    exit 1
+fi
+
 START_TIME=$(date +%s)
 CMD="$1"
 DCNT=0
 ECNT=0
 ERR=0
-PKG_TOTAL=$(echo "$PLIST" | wc -l | tr -d ' ')
+PKG_TOTAL=$(printf '%s\n' "$PLIST" | wc -l | tr -d ' ')
 PKG_CURR=0
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -134,23 +138,88 @@ else
     ACTION_LABEL="$CMD"
 fi
 
+# Stream dumpsys via stdin to index components and avoid ARG_MAX limits
+load_pkg_cache() {
+    pkg="$1"
+    PKG_INDEX=$(/system/bin/dumpsys package "$pkg" 2>/dev/null | awk -v pkg="$pkg" '
+    {
+        if (index($0, "disabledComponents:") > 0) {
+            in_dis = 1
+            next
+        }
+        if (in_dis) {
+            if (index($0, ":") > 0 || length($0) == 0) {
+                in_dis = 0
+            } else {
+                gsub(/^[ \t]+|[ \t\r]+$/, "", $0)
+                if (length($0) > 0) print "DIS:" $0
+                next
+            }
+        }
+        pos = index($0, pkg "/")
+        if (pos > 0) {
+            s = substr($0, pos)
+            sp = index(s, " ")
+            if (sp > 0) s = substr(s, 1, sp - 1)
+            cl = index(s, ":")
+            if (cl > 0) s = substr(s, 1, cl - 1)
+            print "ALL:" s
+        }
+    }' | sort -u)
+}
+
 dodis() {
-    if [ "$DRY_RUN" -eq 1 ]; then
-        # Check cached package dump first, fallback to resolve-activity
-        if printf '%s\n' "$PKG_DUMP" | grep -Fq "${2#*/}" || \
-           /system/bin/cmd package resolve-activity --brief "$2" >/dev/null 2>&1; then
-            if [ "$1" = "enable" ]; then
-                ECNT=$(( ECNT + 1 ))
-            else
-                DCNT=$(( DCNT + 1 ))
-            fi
-        else
+    action="$1"
+    comp="$2"
+
+    # Keep FacebookInitProvider enabled so OfficeSuite does not crash
+    if [ "$comp" = "com.mobisystems.editor.office_registered/com.facebook.internal.FacebookInitProvider" ] && [ "$action" = "disable" ]; then
+        ERR=$(( ERR + 1 ))
+        return 0
+    fi
+
+    pkg_name="${comp%%/*}"
+    comp_raw="${comp#*/}"
+
+    # Normalize leading-dot shorthand to full class name
+    case "$comp_raw" in
+        .*) comp_full="${pkg_name}${comp_raw}" ;;
+        *)  comp_full="$comp_raw" ;;
+    esac
+
+    # Skip components not present in cached package index
+    case "$PKG_INDEX" in
+        *"ALL:${pkg_name}/${comp_full}"*|*"ALL:${pkg_name}/${comp_raw}"*) ;;
+        *)
             ERR=$(( ERR + 1 ))
+            return 0
+            ;;
+    esac
+
+    # Skip components already in the target state
+    case "$PKG_INDEX" in
+        *"DIS:${comp_full}"*|*"DIS:${comp_raw}"*) is_disabled=1 ;;
+        *) is_disabled=0 ;;
+    esac
+
+    if [ "$action" = "disable" ] && [ "$is_disabled" -eq 1 ]; then
+        ERR=$(( ERR + 1 ))
+        return 0
+    elif [ "$action" = "enable" ] && [ "$is_disabled" -eq 0 ]; then
+        ERR=$(( ERR + 1 ))
+        return 0
+    fi
+
+    # Toggle component via native Binder cmd interface
+    if [ "$DRY_RUN" -eq 1 ]; then
+        if [ "$action" = "enable" ]; then
+            ECNT=$(( ECNT + 1 ))
+        else
+            DCNT=$(( DCNT + 1 ))
         fi
     else
-        pm "$1" "$2" >/dev/null 2>&1
-        if [ $? -eq 0 ]; then
-            if [ "$1" = "enable" ]; then
+        if /system/bin/cmd package "$action" "$comp" >/dev/null 2>&1; then
+            if [ "$action" = "enable" ]; then
                 ECNT=$(( ECNT + 1 ))
             else
                 DCNT=$(( DCNT + 1 ))
@@ -168,14 +237,11 @@ print_line
 
 for i in $PLIST; do
     PKG_CURR=$(( PKG_CURR + 1 ))
-    # Live updating status line (stays within 60 columns)
     printf "\r%s|%s %s[%3d/%-3d]%s %-46.46s %s|%s" \
         "$DIM" "$RST" "$CYN" "$PKG_CURR" "$PKG_TOTAL" "$RST" "$i" "$DIM" "$RST"
 
-    # Cache dumpsys output once per package during dry-run
-    if [ "$DRY_RUN" -eq 1 ]; then
-        PKG_DUMP=$(dumpsys package "$i" 2>/dev/null)
-    fi
+    # Cache package component index once per package
+    load_pkg_cache "$i"
 
     # Global components applied to all selected packages
     dodis "$CMD" "$i/com.adjust.sdk.AdjustReferrerReceiver"
@@ -232,7 +298,6 @@ for i in $PLIST; do
     dodis "$CMD" "$i/com.google.android.gms.measurement.AppMeasurementService"
     dodis "$CMD" "$i/com.google.android.gms.measurement.PackageMeasurementService"
     dodis "$CMD" "$i/com.google.android.gms.measurement.PackageMeasurementTaskService"
-    dodis "$CMD" "$i/com.google.android.gms.measurement.GmpConversionTrackingBrokerService"
     dodis "$CMD" "$i/com.google.android.gms.measurement.PackageMeasurementReceiver"
     dodis "$CMD" "$i/com.google.android.gms.tagmanager.TagManagerPreviewActivity"
     dodis "$CMD" "$i/com.google.android.gms.tagmanager.InstallReferrerReceiver"
@@ -261,19 +326,7 @@ for i in $PLIST; do
     # Package-specific rules
     case "$i" in
         "com.google.android.gms")
-            dodis "$CMD" "com.google.android.gms/.ads.AdRequestBrokerService"
-            dodis "$CMD" "com.google.android.gms/.analytics.AnalyticsService"
-            dodis "$CMD" "com.google.android.gms/.analytics.AnalyticsTaskService"
-            dodis "$CMD" "com.google.android.gms/.analytics.internal.PlayLogReportingService"
-            dodis "$CMD" "com.google.android.gms/.analytics.service.AnalyticsService"
-            dodis "$CMD" "com.google.android.gms/.measurement.AppMeasurementJobService"
-            dodis "$CMD" "com.google.android.gms/.measurement.AppMeasurementService"
-            dodis "$CMD" "com.google.android.gms/.measurement.PackageMeasurementService"
-            dodis "$CMD" "com.google.android.gms/.measurement.PackageMeasurementTaskService"
             dodis "$CMD" "com.google.android.gms/.measurement.service.MeasurementBrokerService"
-            dodis "$CMD" "com.google.android.gms/.analytics.AnalyticsReceiver"
-            dodis "$CMD" "com.google.android.gms/.measurement.AppMeasurementReceiver"
-            dodis "$CMD" "com.google.android.gms/.measurement.PackageMeasurementReceiver"
             dodis "$CMD" "com.google.android.gms/com.google.android.gms.auth.account.authenticator.WorkAccountAuthenticatorInitializerReceiver"
             dodis "$CMD" "com.google.android.gms/com.google.android.gms.auth.account.authenticator.WorkAccountAuthenticatorService"
             dodis "$CMD" "com.google.android.gms/com.google.android.gms.auth.account.data.WorkAccountStoreReceiver"
@@ -367,10 +420,6 @@ for i in $PLIST; do
             dodis "$CMD" "com.mobisystems.editor.office_registered/com.mobisystems.office.InstallOtherProductActivity"
             dodis "$CMD" "com.mobisystems.editor.office_registered/com.mobisystems.office.InstallOtherProductActivityFallback"
             dodis "$CMD" "com.mobisystems.editor.office_registered/com.mobisystems.office.OfferOtherProductActivity"
-            # Keep FacebookInitProvider enabled so OfficeSuite does not crash
-            if [ "$CMD" = "disable" ] && [ "$DRY_RUN" -eq 0 ]; then
-                pm enable "com.mobisystems.editor.office_registered/com.facebook.internal.FacebookInitProvider" >/dev/null 2>&1
-            fi
             ;;
         "com.mxtech.videoplayer.pro")
             dodis "$CMD" "com.mxtech.videoplayer.pro/com.facebook.CustomTabMainActivity"
