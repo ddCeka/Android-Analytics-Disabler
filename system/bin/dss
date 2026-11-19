@@ -1,5 +1,10 @@
 #!/system/bin/sh
 
+CONFIG_DIR="/storage/emulated/0/Documents/dss"
+EXCLUDE_FILE="$CONFIG_DIR/exclude.list"
+CUSTOM_FILE="$CONFIG_DIR/custom.list"
+INIT_FLAG="/data/.dss.init"
+
 # Auto-detect ANSI color support (interactive TTY only)
 if [ -t 1 ] && [ "$TERM" != "dumb" ]; then
     RED=$(printf '\033[1;31m')
@@ -55,22 +60,60 @@ display_usage() {
     print_line
 }
 
+# Create Documents/dss config directory and templates if missing
+init_config_dir() {
+    [ -d "/storage/emulated/0" ] || return 0
+    [ -d "$CONFIG_DIR" ] || mkdir -p "$CONFIG_DIR" 2>/dev/null || return 0
+
+    if [ ! -f "$EXCLUDE_FILE" ]; then
+        cat << 'EOF' > "$EXCLUDE_FILE"
+# DSS Package Whitelist (exclude.list)
+# Add one package name per line to skip it during scans.
+# Lines starting with '#' and blank lines are ignored.
+#
+# Example:
+# com.example.bankingapp
+EOF
+    fi
+
+    if [ ! -f "$CUSTOM_FILE" ]; then
+        cat << 'EOF' > "$CUSTOM_FILE"
+# DSS Custom Component Blacklist (custom.list)
+# Add one 'package/component' entry per line.
+# Lines starting with '#' and blank lines are ignored.
+#
+# Example:
+# com.example.app/com.example.ads.BannerActivity
+EOF
+    fi
+}
+
+# Strip CRLF, comments, surrounding spaces, and empty lines
+clean_list_file() {
+    [ -f "$1" ] || return 0
+    tr -d '\r' < "$1" | sed 's/#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$'
+}
+
 # Require root privileges
 if [ "$(id -u)" -ne 0 ]; then
     display_usage "Root access required. Run 'su' first."
     exit 1
 fi
 
+init_config_dir
+
 # First-time initialization notice
-if [ ! -e /data/.dss.init ]; then
+if [ ! -e "$INIT_FLAG" ]; then
     print_header "Analytics Disabler Reminder"
     print_wrap "Applying this script to 'system' apps may cause Google Play system updates to fail and reboot." "$YLW"
     print_row "" ""
     print_wrap "Remember to run this script with 'enable' BEFORE applying a Google Play system update." ""
     print_row "" ""
+    print_wrap "Config templates created in Documents/dss/." "$CYN"
+    print_row "" ""
     print_wrap "You won't see this message when you run the script again." "$DIM"
     print_line
-    touch /data/.dss.init
+    touch "$INIT_FLAG"
     exit 0
 fi
 
@@ -104,6 +147,7 @@ else
 fi
 
 PLIST=$(/system/bin/cmd package list packages -e "$FLAG" | grep -v Swift | sort | sed 's/package://g')
+EXCL_CNT=0
 
 if [ $# -eq 3 ]; then
     if printf '%s\n' "$PLIST" | /system/bin/grep -Fxq "$3"; then
@@ -111,6 +155,25 @@ if [ $# -eq 3 ]; then
     else
         display_usage "Package '$3' not found or disabled."
         exit 1
+    fi
+else
+    # Filter out whitelisted packages from exclude.list
+    CLEAN_EXCL=$(clean_list_file "$EXCLUDE_FILE")
+    if [ -n "$CLEAN_EXCL" ] && [ -n "$PLIST" ]; then
+        FILTERED_PLIST=""
+        for pkg in $PLIST; do
+            if printf '%s\n' "$CLEAN_EXCL" | grep -Fxq "$pkg"; then
+                EXCL_CNT=$(( EXCL_CNT + 1 ))
+            else
+                if [ -z "$FILTERED_PLIST" ]; then
+                    FILTERED_PLIST="$pkg"
+                else
+                    FILTERED_PLIST="$FILTERED_PLIST
+$pkg"
+                fi
+            fi
+        done
+        PLIST="$FILTERED_PLIST"
     fi
 fi
 
@@ -121,6 +184,7 @@ fi
 
 START_TIME=$(date +%s)
 CMD="$1"
+SCOPE="$2"
 DCNT=0
 ECNT=0
 ERR=0
@@ -138,10 +202,13 @@ else
     ACTION_LABEL="$CMD"
 fi
 
-# Stream dumpsys via stdin to index components and avoid ARG_MAX limits
+# Stream dumpsys via stdin to index declared and disabled components without ARG_MAX limits
 load_pkg_cache() {
     pkg="$1"
-    PKG_INDEX=$(/system/bin/dumpsys package "$pkg" 2>/dev/null | awk -v pkg="$pkg" '
+    PKG_COMPS=""
+    DISABLED_COMPS=""
+
+    parsed=$(/system/bin/dumpsys package "$pkg" 2>/dev/null | awk -v pkg="$pkg" '
     {
         if (index($0, "disabledComponents:") > 0) {
             in_dis = 1
@@ -166,8 +233,12 @@ load_pkg_cache() {
             print "ALL:" s
         }
     }' | sort -u)
+
+    PKG_COMPS=$(printf '%s\n' "$parsed" | sed -n 's/^ALL://p')
+    DISABLED_COMPS=$(printf '%s\n' "$parsed" | sed -n 's/^DIS://p')
 }
 
+# Check existence and current state before toggling component via cmd package
 dodis() {
     action="$1"
     comp="$2"
@@ -181,24 +252,21 @@ dodis() {
     pkg_name="${comp%%/*}"
     comp_raw="${comp#*/}"
 
-    # Normalize leading-dot shorthand to full class name
     case "$comp_raw" in
         .*) comp_full="${pkg_name}${comp_raw}" ;;
         *)  comp_full="$comp_raw" ;;
     esac
 
-    # Skip components not present in cached package index
-    case "$PKG_INDEX" in
-        *"ALL:${pkg_name}/${comp_full}"*|*"ALL:${pkg_name}/${comp_raw}"*) ;;
+    case "$PKG_COMPS" in
+        *"${pkg_name}/${comp_full}"*|*"${pkg_name}/${comp_raw}"*) ;;
         *)
             ERR=$(( ERR + 1 ))
             return 0
             ;;
     esac
 
-    # Skip components already in the target state
-    case "$PKG_INDEX" in
-        *"DIS:${comp_full}"*|*"DIS:${comp_raw}"*) is_disabled=1 ;;
+    case "$DISABLED_COMPS" in
+        *"$comp_full"*|*"$comp_raw"*) is_disabled=1 ;;
         *) is_disabled=0 ;;
     esac
 
@@ -210,7 +278,6 @@ dodis() {
         return 0
     fi
 
-    # Toggle component via native Binder cmd interface
     if [ "$DRY_RUN" -eq 1 ]; then
         if [ "$action" = "enable" ]; then
             ECNT=$(( ECNT + 1 ))
@@ -232,7 +299,11 @@ dodis() {
 
 print_header "DSS Execution Started"
 print_row "Action : $ACTION_LABEL" "$ACTION_COLOR"
-print_row "Scope  : $2 ($PKG_TOTAL package(s))" ""
+if [ "$EXCL_CNT" -gt 0 ]; then
+    print_row "Scope  : $SCOPE ($PKG_TOTAL pkg(s), $EXCL_CNT excluded)" ""
+else
+    print_row "Scope  : $SCOPE ($PKG_TOTAL package(s))" ""
+fi
 print_line
 
 for i in $PLIST; do
@@ -240,7 +311,7 @@ for i in $PLIST; do
     printf "\r%s|%s %s[%3d/%-3d]%s %-46.46s %s|%s" \
         "$DIM" "$RST" "$CYN" "$PKG_CURR" "$PKG_TOTAL" "$RST" "$i" "$DIM" "$RST"
 
-    # Cache package component index once per package
+    # Cache component index once per package
     load_pkg_cache "$i"
 
     # Global components applied to all selected packages
@@ -443,6 +514,34 @@ for i in $PLIST; do
     esac
 done
 
+# Process custom.list entries matching active scope and package filter
+CLEAN_CUSTOM=$(clean_list_file "$CUSTOM_FILE")
+if [ -n "$CLEAN_CUSTOM" ]; then
+    printf "\r%s|%s %s[CUSTOM]%s %-47.47s %s|%s" \
+        "$DIM" "$RST" "$CYN" "$RST" "Processing Documents/dss/custom.list..." "$DIM" "$RST"
+
+    LAST_CUSTOM_PKG=""
+    OLD_IFS="$IFS"
+    IFS='
+'
+    for entry in $CLEAN_CUSTOM; do
+        IFS="$OLD_IFS"
+        case "$entry" in
+            */*)
+                c_pkg="${entry%%/*}"
+                if printf '%s\n' "$PLIST" | grep -Fxq "$c_pkg"; then
+                    if [ "$c_pkg" != "$LAST_CUSTOM_PKG" ]; then
+                        load_pkg_cache "$c_pkg"
+                        LAST_CUSTOM_PKG="$c_pkg"
+                    fi
+                    dodis "$CMD" "$entry"
+                fi
+                ;;
+        esac
+    done
+    IFS="$OLD_IFS"
+fi
+
 # Compute elapsed time
 END_TIME=$(date +%s)
 ELAPSED=$(( END_TIME - START_TIME ))
@@ -470,6 +569,9 @@ fi
 
 printf "\r%s|%s %s%-56.56s%s %s|%s\n" \
     "$DIM" "$RST" "$DONE_CLR" "$DONE_MSG" "$RST" "$DIM" "$RST"
+if [ "$EXCL_CNT" -gt 0 ]; then
+    print_row "Excluded: $EXCL_CNT package(s) via exclude.list" "$DIM"
+fi
 print_line
 printf "%s|%s %s%-18.18s%s %s|%s %s%-16.16s%s %s|%s %s%-16.16s%s %s|%s\n" \
     "$DIM" "$RST" "$RED" "$LBL_DIS" "$RST" \

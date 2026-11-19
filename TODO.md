@@ -4,26 +4,26 @@ Target Environment: **Legacy Magisk v20.4 – v23.x** (POSIX `/system/bin/sh`)
 
 ---
 
-## v9.1 — User Whitelist & Blacklist Configuration (`/sdcard/dss/`)
+## v9.1 — user whitelist & blacklist configuration (`/sdcard/Documents/dss/`)
 Allow users to customize excluded apps and extra blocked components from an easily accessible storage directory without modifying the module binary.
 
-- [ ] **Auto-initialize config directory & templates:**
-  - Create `/sdcard/dss/` during first run (alongside `/data/.dss.init`) if it does not exist.
-  - Generate `/sdcard/dss/exclude.list` with usage comments (package whitelist).
-  - Generate `/sdcard/dss/custom.list` with usage comments (`package/component` blacklist).
-- [ ] **Implement `exclude.list` parsing (Package Whitelist):**
+- [x] **Auto-initialize config directory & templates:**
+  - Create `/sdcard/Documents/dss/` during first run (alongside `/data/.dss.init`) if it does not exist.
+  - Generate `/sdcard/Documents/dss/exclude.list` with usage comments (package whitelist).
+  - Generate `/sdcard/Documents/dss/custom.list` with usage comments (`package/component` blacklist).
+- [x] **Implement `exclude.list` parsing (Package Whitelist):**
   - Strip Windows `
 ` line endings, blank lines, and `#` comments.
   - Filter matching package names out of `$PLIST` before execution.
   - Track excluded package count and display it in the 60-column summary box.
-- [ ] **Implement `custom.list` parsing (Custom Component Blacklist):**
+- [x] **Implement `custom.list` parsing (Custom Component Blacklist):**
   - Strip `
 ` line endings, blank lines, and `#` comments.
   - Run `dodis "$CMD"` on each valid `package/component` entry after the main package loop.
   - Respect `--dry-run` mode and scope rules for custom entries.
-- [ ] **Update `uninstall.sh` handling:**
+- [x] **Update `uninstall.sh` handling:**
   - Ensure `dss enable` runs before cleanup so custom components are also restored on module removal.
-  - Preserve `/sdcard/dss/` user configs across module upgrades/uninstalls.
+  - Preserve `/sdcard/Documents/dss/` user configs across module upgrades/uninstalls.
 
 ---
 
