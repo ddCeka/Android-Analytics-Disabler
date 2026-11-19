@@ -291,6 +291,10 @@ for i in $PLIST; do
             dodis "$CMD" "com.google.android.gms/com.google.android.location.settings.EAlertSettingsActivity"
             dodis "$CMD" "com.google.android.gms/com.google.android.location.settings.EAlertSettingsV31Activity"
             ;;
+        "com.android.vending")
+            dodis "$CMD" "com.android.vending/com.google.android.finsky.emergencyselfupdate.EmergencySelfUpdateService"
+            dodis "$CMD" "com.android.vending/com.google.android.finsky.recoverymode.safeselfupdate.SafeSelfUpdateService"
+            ;;
         "com.google.android.apps.messaging")
             dodis "$CMD" "com.google.android.apps.messaging/android.support.v7.mms.MmsService"
             dodis "$CMD" "com.google.android.apps.messaging/com.google.android.apps.messaging.rcsmigration.RcsMigrationService"
