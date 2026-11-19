@@ -4,7 +4,7 @@ A lightweight Magisk module that disables background analytics, ad SDKs, crash r
 
 ## Overview
 
-Many Android applications bundle background services, receivers, and content providers for behavioral tracking, telemetry, and advertising. DSS uses Android's Package Manager (`pm`) to toggle these components off persistently across reboots, reducing background wakeups, telemetry overhead, and data collection.
+Many Android applications bundle background services, receivers, and content providers for behavioral tracking, telemetry, and advertising. DSS uses Android's native Package Manager binder interface (`cmd package`) paired with single-pass `dumpsys` component caching to persistently toggle these components off across reboots—reducing background wakeups, telemetry overhead, and data collection in seconds.
 
 ### Targeted SDKs & Services
 * **Analytics & Attribution:** Google Analytics, Google App Measurement, Firebase Analytics/Performance, Adjust, AppsFlyer, Facebook Analytics.
@@ -14,8 +14,8 @@ Many Android applications bundle background services, receivers, and content pro
 
 ## Prerequisites
 
-* A rooted Android device running **Magisk**.
-* Terminal access via **ADB** or a local terminal app (e.g., [Termux](https://termux.com)).
+* A rooted Android device running **Magisk** (compatible with Magisk v20.4+ via POSIX `/system/bin/sh`).
+* Terminal access via **ADB** or a local terminal app (e.g., [Termux](https://github.com/termux/termux-app/releases/latest)).
 
 ## Installation
 
@@ -40,7 +40,7 @@ su
 > If using Termux without direct `su`, install `sudo` (`pkg install sudo`) and prefix commands with `sudo`.
 
 ### First-Time Run
-The very first time you execute `dss`, it displays a one-time safety reminder regarding Google Play system updates and creates `/data/.dss.init`. Run your desired command a second time to begin execution.
+The very first time you execute `dss`, it creates `/data/.dss.init`, initializes configuration templates inside `/sdcard/Documents/dss/`, and displays a one-time safety reminder regarding Google Play system updates. Run your desired command a second time to begin execution.
 
 ### Syntax
 
@@ -76,20 +76,23 @@ dss [-n|--dry-run] {enable|disable} {user|system} [package]
 
 ```text
 +----------------------------------------------------------+
-
 | DSS Execution Started                                    |
 +----------------------------------------------------------+
-
 | Action : disable                                         |
-| Scope  : user (42 package(s))                            |
+| Scope  : user (115 pkg(s), 2 excluded)                   |
 +----------------------------------------------------------+
-
-| Completed 42 package(s) in 14s.                          |
+| Completed 115 package(s) in 11s.                         |
 +----------------------------------------------------------+
-
-| Disabled: 318      | Enabled: 0       | Skipped: 3000    |
+| Disabled: 318      | Enabled: 0       | Skipped: 8842    |
 +----------------------------------------------------------+
 ```
+
+## Configuration (`/sdcard/Documents/dss/`)
+
+On first run, DSS automatically creates `/sdcard/Documents/dss/` with two user-editable plain-text configuration files (blank lines and `#` comments are ignored):
+
+* **`exclude.list` (Package Whitelist):** Add one package name per line (e.g., `com.example.bankingapp`) to skip it during bulk `user` or `system` scans.
+* **`custom.list` (Custom Component Blacklist):** Add one `package/component` entry per line (e.g., `com.example.app/com.example.ads.BannerActivity`) to disable or re-enable additional components alongside built-in rules.
 
 ## Important Warnings & Troubleshooting
 
@@ -106,11 +109,16 @@ Some apps are poorly coded and may crash if a specific SDK component (such as `F
    ```bash
    dss enable user <package-name>
    ```
-2. **Or re-enable a single component manually:**
+2. **Exclude the app permanently** by adding its package name to `/sdcard/Documents/dss/exclude.list`.
+3. **Or re-enable a single component manually:**
    ```bash
-   pm enable <package-name>/<component-name>
+   cmd package enable <package-name>/<component-name>
    ```
-   *(For example: `pm enable com.telkomsel.telkomselcm/com.facebook.internal.FacebookInitProvider`)*
+   *(For example: `cmd package enable com.telkomsel.telkomselcm/com.facebook.internal.FacebookInitProvider`)*
+
+## Uninstalling
+
+Removing the module from the **Magisk** app automatically runs `uninstall.sh` on the next reboot, which re-enables all built-in and `custom.list` components for both `user` and `system` apps while preserving your `/sdcard/Documents/dss/` configuration files.
 
 ## Inspecting the Source
 

@@ -34,7 +34,7 @@ Improve visibility into component states after app or Google Play System updates
   - Inspect current enabled vs. disabled state of targeted components using cached `dumpsys package` output.
   - Display a 60-column summary showing active vs. already-disabled component counts.
 - [ ] **Add batch file targeting (`-f` / `--file <path>`):**
-  - Allow passing a plain-text file of package names (`dss -f /sdcard/dss/targets.list disable`).
+  - Allow passing a plain-text file of package names (`dss -f /sdcard/Documents/dss/targets.list disable`).
   - Validate file existence and filter against installed packages.
 
 ---
@@ -48,7 +48,7 @@ Add optional background persistence across reboots and troubleshooting logs for 
 - [ ] **Add CLI toggle (`dss autoboot {on|off}`):**
   - Create or remove `/data/.dss.autoboot` and display confirmation in the 60-column UI.
 - [ ] **Add execution logging (`-l` / `--log`):**
-  - Save timestamped component changes (`enabled` / `disabled` / `error`) to `/data/local/tmp/dss.log` (or `/sdcard/dss/last_run.log`) to help diagnose app crashes.
+  - Save timestamped component changes (`enabled` / `disabled` / `error`) on directory `/sdcard/Documents/dss/last_run.log` to help diagnose app crashes.
 
 ---
 
